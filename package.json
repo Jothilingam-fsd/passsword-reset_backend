@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Backend Node.js server for password reset flow with email verification and token expiry",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
