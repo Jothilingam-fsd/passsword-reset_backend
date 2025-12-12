@@ -1,27 +1,103 @@
-/**
- * routes/auth.js
- * 
- * Defines routes related to authentication and password reset flow.
- * Routes:
- *  POST /forgot-password - initiate password reset by email
- *  GET /reset-password/:token - validate password reset token
- *  POST /reset-password/:token - reset password with valid token
- */
+// backend/routes/auth.js
 
 import express from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import validator from 'validator';
 import User from '../models/User.js';
 import { sendResetEmail } from '../utils/email.js';
 
 const router = express.Router();
 
 /**
+ * POST /register
+ * Request body: { email, password }
+ */
+router.post('/register', async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validate email
+    if (!email || typeof email !== 'string' || !validator.isEmail(email)) {
+      return res.status(400).json({ success: false, message: 'Valid email is required' });
+    }
+
+    // Validate password
+    if (
+      !password ||
+      typeof password !== 'string' ||
+      password.length < 8 ||
+      !/[A-Z]/.test(password) ||
+      !/[a-z]/.test(password) ||
+      !/[0-9]/.test(password) ||
+      !/[^A-Za-z0-9]/.test(password)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Password must be at least 8 characters long, include uppercase, lowercase, number, and special character',
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'User with this email already exists' });
+    }
+
+    // Create new user
+    const newUser = new User({ email: email.toLowerCase(), password });
+    await newUser.save();
+
+    return res.status(201).json({
+      success: true,
+      message: 'User registered successfully',
+      user: { id: newUser._id, email: newUser.email }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /login
+ * Request body: { email, password }
+ */
+router.post('/login', async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password are required' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    // Optional: generate JWT here if needed
+    // const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    return res.json({
+      success: true,
+      message: 'Login successful',
+      user: { id: user._id, email: user.email }
+      // token
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * POST /forgot-password
- * Request body: { email: string }
- * 
- * Checks if user exists, generates secure token and expiry,
- * stores them in DB, sends email with reset link.
+ * Request body: { email }
  */
 router.post('/forgot-password', async (req, res, next) => {
   try {
@@ -33,23 +109,16 @@ router.post('/forgot-password', async (req, res, next) => {
 
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
-      // For security, do not reveal that email does not exist
-      return res.status(404).json({ success: false, message: 'No account found with that email' });
+      return res.status(200).json({ success: true, message: 'If an account with that email exists, a reset link will be sent' });
     }
 
-    // Generate secure random token (40 hex characters)
     const resetToken = crypto.randomBytes(20).toString('hex');
+    const resetExpire = Date.now() + 3600000; // 1 hour
 
-    // Set expiry date 1 hour from now
-    const resetExpire = Date.now() + 3600000; // 1 hour in ms
-
-    // Save token and expiry to user document
     user.resetPasswordToken = resetToken;
     user.resetPasswordExpire = resetExpire;
-
     await user.save();
 
-    // Send reset email with token
     await sendResetEmail(user.email, resetToken);
 
     return res.json({ success: true, message: 'Password reset email sent if account exists' });
@@ -60,21 +129,15 @@ router.post('/forgot-password', async (req, res, next) => {
 
 /**
  * GET /reset-password/:token
- * 
- * Validates the token by checking existence and expiry date.
- * Responds with JSON indicating validity.
+ * Validate token
  */
 router.get('/reset-password/:token', async (req, res, next) => {
   try {
     const { token } = req.params;
 
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ success: false, message: 'Invalid token' });
-    }
-
     const user = await User.findOne({
       resetPasswordToken: token,
-      resetPasswordExpire: { $gt: Date.now() }, // token not expired
+      resetPasswordExpire: { $gt: Date.now() }
     });
 
     if (!user) {
@@ -89,19 +152,12 @@ router.get('/reset-password/:token', async (req, res, next) => {
 
 /**
  * POST /reset-password/:token
- * Request body: { password: string }
- * 
- * Validates token, hashes new password, updates user password,
- * clears token and expiry, responds with success or error.
+ * Request body: { password }
  */
 router.post('/reset-password/:token', async (req, res, next) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
-
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ success: false, message: 'Invalid token' });
-    }
 
     if (
       !password ||
@@ -112,7 +168,6 @@ router.post('/reset-password/:token', async (req, res, next) => {
       !/[0-9]/.test(password) ||
       !/[^A-Za-z0-9]/.test(password)
     ) {
-      // Password must be at least 8 characters, include uppercase, lowercase, number, special char
       return res.status(400).json({
         success: false,
         message:
@@ -129,12 +184,7 @@ router.post('/reset-password/:token', async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid or expired token' });
     }
 
-    // Hash new password
-    const salt = await bcrypt.genSalt(12);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Update password and clear reset token fields
-    user.password = hashedPassword;
+    user.password = password; // hashed automatically by pre-save hook
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
 

@@ -1,15 +1,3 @@
-/**
- * models/User.js
- * 
- * Mongoose schema and model for User collection.
- * Fields:
- *  - email: unique, required, validated as email
- *  - password: required, hashed string
- *  - resetPasswordToken: string, optional, token for password reset
- *  - resetPasswordExpire: date, optional, expiry timestamp for token
- * 
- * Includes pre-save hook to ensure password is hashed if modified.
- */
 
 import mongoose from 'mongoose';
 import validator from 'validator';
