@@ -1,13 +1,3 @@
-/**
- * server.js
- * 
- * Entry point for the backend Node.js server.
- * Sets up Express app with middleware, connects to MongoDB using Mongoose,
- * loads routes, and starts the server.
- * 
- * Implements global error handling and proper logging.
- */
-
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -22,7 +12,11 @@ const app = express();
 app.use(express.json());
 
 // Enable CORS for all origins - adjust or restrict in production as needed
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
 
 // Routes for authentication and password reset
 app.use('/api/auth', authRoutes);
@@ -30,11 +24,21 @@ app.use('/api/auth', authRoutes);
 // Global error handler middleware
 app.use((err, req, res, next) => {
   console.error('Global error handler:', err);
+
+  // Duplicate email error
+  if (err.code === 11000) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email already exists',
+    });
+  }
+
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal Server Error',
   });
 });
+
 
 // Connect to MongoDB
 const connectDB = async () => {
@@ -45,7 +49,7 @@ const connectDB = async () => {
     console.log('MongoDB connected successfully.');
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    // process.exit(1); // exit process with failure
+    process.exit(1); // exit process with failure
   }
 };
 

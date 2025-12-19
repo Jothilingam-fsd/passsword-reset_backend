@@ -1,12 +1,7 @@
-// backend/routes/auth.js
-
 import express from 'express';
 import crypto from 'crypto';
-import bcrypt from 'bcryptjs';
-import validator from 'validator';
 import User from '../models/User.js';
 import { sendResetEmail } from '../utils/email.js';
-
 const router = express.Router();
 
 /**
@@ -15,14 +10,15 @@ const router = express.Router();
  */
 router.post('/register', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { fullName, email, password } = req.body;
 
-    // Validate email
-    if (!email || typeof email !== 'string' || !validator.isEmail(email)) {
-      return res.status(400).json({ success: false, message: 'Valid email is required' });
+    if (!fullName || fullName.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name is required'
+      });
     }
 
-    // Validate password
     if (
       !password ||
       typeof password !== 'string' ||
@@ -39,20 +35,31 @@ router.post('/register', async (req, res, next) => {
       });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const emailLower = email.trim().toLowerCase();
+
+    const existingUser = await User.findOne({ email: emailLower });
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User with this email already exists' });
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
     }
 
-    // Create new user
-    const newUser = new User({ email: email.toLowerCase(), password });
-    await newUser.save();
+    const newUser = new User({
+      fullName: fullName.trim(),
+      email: emailLower,
+      password: password, 
+    });
+
+    await newUser.save(); 
 
     return res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      user: { id: newUser._id, email: newUser.email }
+      user: {
+        id: newUser._id,
+        email: newUser.email
+      }
     });
   } catch (error) {
     next(error);
@@ -68,32 +75,43 @@ router.post('/login', async (req, res, next) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password are required' });
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const emailTrimmed = email.trim().toLowerCase();
+
+    const user = await User.findOne({ email: emailTrimmed });
     if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid email or password' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(400).json({ success: false, message: 'Invalid email or password' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
     }
-
-    // Optional: generate JWT here if needed
-    // const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
     return res.json({
       success: true,
       message: 'Login successful',
-      user: { id: user._id, email: user.email }
-      // token
+      user: {
+        id: user._id,
+        email: user.email
+      }
     });
   } catch (error) {
     next(error);
   }
 });
+
 
 /**
  * POST /forgot-password
